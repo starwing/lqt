@@ -32,11 +32,35 @@ public:
     QByteArray result;
     pp_environment env;
     QStringList includePaths;
+    QStringList macros;
 
     void initPP(pp &proc)
     {
         foreach(const QString& path, includePaths)
             proc.push_include_path(path.toStdString());
+        foreach(const QString& macro, macros)
+        {
+            if (macro[1] == 'U')
+                env.unbind(macro.right(macro.length() - 2).toStdString().c_str(), macro.length() - 2);
+
+            else if (macro[1] == 'D')
+            {
+                pp_macro pm;
+                int eq = macro.indexOf('=');
+                std::string stdm(macro.toStdString());
+                if (eq < 0)
+                {
+                    pm.name = pp_symbol::get(stdm.begin() + 2, stdm.end());
+                    pm.definition = 0;
+                }
+                else
+                {
+                    pm.name = pp_symbol::get(stdm.begin() + 2, stdm.begin() + eq);
+                    pm.definition = pp_symbol::get(stdm.begin() + eq + 1, stdm.end());
+                }
+                env.bind(pm.name, pm);
+            }
+        }
     }
 };
 
@@ -85,6 +109,11 @@ QByteArray Preprocessor::result() const
 void Preprocessor::addIncludePaths(const QStringList &includePaths)
 {
     d->includePaths += includePaths;
+}
+
+void Preprocessor::addMacros(const QStringList &macros)
+{
+    d->macros += macros;
 }
 
 QStringList Preprocessor::macroNames() const

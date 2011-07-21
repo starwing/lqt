@@ -32,6 +32,7 @@ public:
     void processString(const QByteArray &str);
 
     void addIncludePaths(const QStringList &includePaths);
+    void addMacros(const QStringList &macros);
 
     QByteArray result() const;
 
