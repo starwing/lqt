@@ -181,6 +181,8 @@ inline pp::PP_DIRECTIVE_TYPE pp::find_directive (char const *__directive, std::s
       case 6:
         if (__directive[0] == 'i' && !strcmp (__directive, "ifndef"))
           return PP_IFNDEF;
+        if (__directive[0] == 'i' && !strcmp (__directive, "import"))
+          return PP_UNKNOWN_DIRECTIVE; // XXX ignore Apple's #import
         else if (__directive[0] == 'd' && !strcmp (__directive, "define"))
           return PP_DEFINE;
         else if (__directive[0] == 'p' && !strcmp (__directive, "pragma"))
