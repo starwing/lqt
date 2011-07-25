@@ -69,7 +69,7 @@ void DeclaratorCompiler::run(DeclaratorAST *node)
 
       if (const ListNode<ExpressionAST*> *it = node->array_dimensions)
         {
-          it->toFront();
+          it = it->toFront();
           const ListNode<ExpressionAST*> *end = it;
 
           do
