@@ -132,6 +132,21 @@ TypeInfo LuaTableVisitor::solve(const TypeInfo& t, QStringList scope)
     return tt;
 }
 
+QString attrStringList(QStringList list, int indent = 0)
+{
+    QString ret;
+    if (!list.isEmpty())
+    {
+        ret += "{\n";
+        ++indent;
+        foreach(QString p, list)
+            ret += p.prepend(INDENT + "\"").append("\",\n");
+        --indent;
+        ret += INDENT + "}";
+    }
+    return ret;
+}
+
 QString LuaTableVisitor::visit(const TypeInfo& t, QStringList scope)
 {
     //t = t.resolveType(t, t.scope());
@@ -155,7 +170,7 @@ QString LuaTableVisitor::visit(const TypeInfo& t, QStringList scope)
     if (tt.indirections() > 0) ret += ATTR_NUM("indirections", tt.indirections());
 
     if (!tt.arrayElements().isEmpty())
-        ATTR_STR("array", tt.arrayElements().join(","));
+        ret += ATTR_OBJ("array", attrStringList(tt.arrayElements(), indent));
 
     if (tt.isFunctionPointer()) ret += ATTR_TRUE("function_pointer");
 
@@ -185,21 +200,6 @@ QString LuaTableVisitor::LuaTag(CodeModelItem i)
     return QString();
 }
 
-QString attrStringList(QStringList list, int indent = 0)
-{
-    QString ret;
-    if (!list.isEmpty())
-    {
-        ret += "{\n";
-        ++indent;
-        foreach(QString p, list)
-            ret += p.prepend(INDENT + "\"").append("\",\n");
-        --indent;
-        ret += INDENT + "}";
-    }
-    return ret;
-}
-
 QString templateParametersToList(TemplateParameterList list, int indent = 0)
 {
     QString ret;
@@ -208,7 +208,6 @@ QString templateParametersToList(TemplateParameterList list, int indent = 0)
         nameList << p->name();
     return attrStringList(nameList, indent);
 }
-
 
 QString LuaTableVisitor::visit(CodeModelItem i)
 {
