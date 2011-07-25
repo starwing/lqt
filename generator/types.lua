@@ -82,8 +82,12 @@ local function enum_type(en)
     return t
 end
 
+local function class_cname(classname)
+    return (string.gsub(classname, '::', '.')..'*')
+end
+
 local function class_instance_type(classname, foreign)
-    local tn = string.gsub(classname, '::', '.')..'*'
+    local tn = class_cname(classname)
     local t = format_type(tn, 1,
         ('*static_cast<%s*>(lqtL_toudata(L, %%s, "%s"))'):format(classname, tn),
         ('lqtL_copyudata(L, &%%s, "%s")'):format(tn),
@@ -95,7 +99,7 @@ local function class_instance_type(classname, foreign)
 end
 
 local function class_ptr_type(classname, foreign)
-    local tn = string.gsub(classname, '::', '.')..'*'
+    local tn = class_cname(classname)
     local t = format_type(tn, 1,
         ('static_cast<%s*>(lqtL_toudata(L, %%s, "%s"))'):format(classname, tn),
         ('lqtL_pushudata(L, %%s, "%s")'):format(tn),
@@ -107,7 +111,7 @@ local function class_ptr_type(classname, foreign)
 end
 
 local function class_ref_type(classname, foreign)
-    local tn = string.gsub(classname, '::', '.')..'*'
+    local tn = class_cname(classname)
     local t = format_type(tn, 1,
         ('*static_cast<%s*>(lqtL_toudata(L, %%s, "%s"))'):format(classname, tn),
         ('lqtL_pushudata(L, &%%s, "%s")'):format(tn),
@@ -119,7 +123,7 @@ local function class_ref_type(classname, foreign)
 end
 
 local function class_const_ptr_type(classname, foreign)
-    local tn = string.gsub(classname, '::', '.')..'*'
+    local tn = class_cname(classname)
     local t = format_type(tn, 1,
         function(arg)
             local method = can_convert[classname] and 'convert' or 'toudata'
@@ -137,7 +141,7 @@ local function class_const_ptr_type(classname, foreign)
 end
 
 local function class_const_ref_type(classname, foreign)
-    local tn = string.gsub(classname, '::', '.')..'*'
+    local tn = class_cname(classname)
     local t = format_type(tn, 1,
         function(arg)
             local method = can_convert[classname] and 'convert' or 'toudata'
@@ -230,6 +234,18 @@ typetable['std::string'] = decl_type('string',
 
 -- utils functions
 
+-- declare a entry is ignored from export.
+local ignore_file
+
+local function set_modulename(name)
+    ignore_file = assert(io.open(name.."_ignored.txt", "w"))
+end
+
+local function ignore(name, context, reason)
+    assert(ignore_file, "call set_modulename first")
+        :write(("%25s: %15s - %s\n"):format(context, name, reason))
+end
+
 -- Determines, if a class is public, requires fullnames
 local function is_class_public(c)
     repeat
@@ -293,7 +309,7 @@ local function register_ci(ci, fix_class, fix_function)
             e.cname = string.gsub(e.fullname, '::', '_LQT_')
 
             if not is_class_public(e) then
-                utils.ignore(e.fullname, 'not public')
+                ignore(e.fullname, e.context, 'not public')
             elseif not e.fullname:match'%b<>' then
                 classes[e] = true
                 if fix_class then fix_class(e) end
@@ -364,23 +380,6 @@ local function typepair(tn, name)
     return ret
 end
 
---- Constructs the code that pushes arguments to the Lua stack.
--- Returns the code as a string, and stack increment. In case that an unknown
--- type is encountered, nil and the unknown type is returned.
-local function print_pushargs(args)
-    local codelines = {}
-    local stack = 0
-
-    for i, a in ipairs(args) do
-        if not typetable[a.type_name] then return nil, a.type_name end
-        local apush, an = typetable[a.type_name].push('arg'..i)
-        table.insert(codelines, '    ' .. apush .. ';\n');
-        stack = stack + an
-    end
-
-    return table.concat(codelines), stack
-end
-
 --- Constructs that code that get arguments from the Lua stack.
 --Returns the code as a string, and the codelines for use these
 --argument, and argument description used for overloads error
@@ -403,7 +402,8 @@ local function print_getargs(args, stackn)
         local argname = 'arg'..argn
         local aget, an, arg_as = typetable[a.type_name].get(stackn)
 
-        I(codelines, '    ' .. typepair(arg_as or a.type_name, argname) .. ' = ')
+        if i ~= 1 then I(codelines, '    ') end
+        I(codelines, typepair(arg_as or a.type_name, argname) .. ' = ')
         if a.default=='1' and an > 0 then
             local condt = {}
             for j = stackn, stackn+an-1 do
@@ -419,7 +419,28 @@ local function print_getargs(args, stackn)
         argn = argn + 1
     end
 
-    return C(codelines), '('..C(callline, ', ')..')', C(argdesc, ", ")
+    if #argdesc == 0 then
+        argdesc[1] = "(void)"
+    end
+
+    return C(codelines), C(callline, ', '), C(argdesc, ", ")
+end
+
+--- Constructs the code that pushes arguments to the Lua stack.
+-- Returns the code as a string, and stack increment. In case that an unknown
+-- type is encountered, nil and the unknown type is returned.
+local function print_pushargs(args)
+    local codelines = {}
+    local stack = 0
+
+    for i, a in ipairs(args) do
+        if not typetable[a.type_name] then return nil, a.type_name end
+        local apush, an = typetable[a.type_name].push('arg'..i)
+        table.insert(codelines, '    ' .. apush .. ';\n');
+        stack = stack + an
+    end
+
+    return table.concat(codelines), stack
 end
 
 -- debug
@@ -439,6 +460,7 @@ local _M = {}
 _M.decl_type                = decl_type
 _M.format_type              = format_type
 _M.numeric_type             = numeric_type
+_M.class_cname              = class_cname
 _M.class_instance_type      = class_instance_type
 _M.class_ptr_type           = class_ptr_type
 _M.class_ref_type           = class_ref_type
@@ -446,16 +468,19 @@ _M.class_const_ptr_type     = class_const_ptr_type
 _M.class_const_ref_type     = class_const_ref_type
 _M.class_const_ptr_ref_type = class_const_ptr_ref_type
 
+_M.set_modulename = set_modulename
+_M.ignore         = ignore
+_M.newtype        = newtype
+_M.newclass       = newclass
+_M.register_ci    = register_ci
+_M.typepair       = typepair
+_M.print_pushargs = print_pushargs
+_M.print_getargs  = print_getargs
+
+function _M.info(name)   return typetable[name] end
 function _M.typesystem() return typetable end
 function _M.classes()    return classes end
 function _M.functions()  return functions end
 function _M.fullnames()  return fullnames end
-
-_M.newtype = newtype
-_M.newclass = newclass
-_M.register_ci = register_ci
-_M.typepair = typepair
-_M.print_pushargs = print_pushargs
-_M.print_getargs = print_getargs
 
 return _M

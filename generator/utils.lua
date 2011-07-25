@@ -1,28 +1,7 @@
 local pathsep       = package.config:sub(1,1)
 local scriptpath    = string.match(arg[0], '(.*'..pathsep..')[^%'..pathsep..']+') or ''
 
--- exports
-local _M = {}
-
-_M.pathsep       = pathsep
-_M.scriptpath    = scriptpath
-
-function _M.verbose()
-end
-
-function _M.ignore(name)
-    assert(require 'types'.fullnames()[name]).ignore = true
-end
-
-function _M.setverbose(b)
-    verbose = b and io.stderr.write or function() end
-    function ignore(name, cause, context)
-        assert(require 'types'.fullnames()[name]).ignore = true
-        ignore_file:write(name, ';', cause, ';', (context or ''), '\n')
-    end
-end
-
-function _M.ToString(v, lvl)
+local function ToString(v, lvl)
     local tt = type(v)
     if tt == 'string' then
         return ('%q'):format(v)
@@ -32,7 +11,6 @@ function _M.ToString(v, lvl)
         local tt = {"{\n"}
         local lvls = ('  '):rep(lvl)
         local lvls2 = ('  '):rep(lvl+1)
-        local ToString = ToString
         for key, val in pairs(v) do
             local cur = #tt
             tt[cur+1] = lvls2
@@ -49,8 +27,27 @@ function _M.ToString(v, lvl)
     return tostring(v)
 end
 
-function _M.template(text, tbl)
-    return string.gsub(text, "${%w+}", tbl)
+-- exports
+local _M = {}
+
+_M.pathsep       = pathsep
+_M.scriptpath    = scriptpath
+_M.verbose       = function() end
+_M.ToString      = ToString
+
+function _M.set_verbose(b)
+    _M.verbose = b and io.stderr.write or function() end
+end
+
+
+function _M.template(text, default)
+    if type(text) == 'table' then text = table.concat(text) end
+    return function(tbl)
+        return (string.gsub(text, "${(%w+)}", setmetatable(tbl, {
+                __index = function(t, k) return default end
+            })))
+    end
 end
 
 return _M
+
