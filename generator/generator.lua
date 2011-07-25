@@ -92,21 +92,23 @@ do
             elseif opt == 'm' then
                 table.insert(modules, 1, argvalue)
             elseif opt == 'n' then
-                modulename = argvalue
+                modulename = modulename and error'duplicate modulename' or argvalue
+                types.set_modulename(modulename)
             elseif opt == 't' then
                 table.insert(typefiles, argvalue)
             elseif opt == 'v' then
-                utils.setverbose(true)
+                utils.set_verbose(true)
             end
         else
             filename = filename and error'duplicate filename' or curarg
         end
     end
 
-    if not filename then
+    if not filename or not modulename then
         help()
     end
 end
+
 
 -- set output includes
 do
@@ -139,6 +141,7 @@ end
 
 ----------------------------------------------------------------------------------
 
+-- local extra types declarations
 for i, ft in ipairs(typefiles) do
     assert(loadfile(ft))(types)
 end
