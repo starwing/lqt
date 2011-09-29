@@ -36,8 +36,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/
 
 add_definitions(-DRXX_ALLOCATOR_INIT_0 -DQT_STL)
 
-set(parser_src main.cpp 
-               parser/ast.cpp
+set(parser_src parser/ast.cpp
                parser/binder.cpp
                parser/class_compiler.cpp
                parser/codemodel.cpp
@@ -58,10 +57,14 @@ set(parser_src main.cpp
                parser/rpp/preprocessor.cpp)
 
 
-add_executable(cpptoxml ${parser_src} )
+add_executable(cpptoxml main.cpp ${parser_src} )
+add_executable(cpptolua main_luatable.cpp ${parser_src} )
+add_executable(cpptojson main_json.cpp ${parser_src} )
 
-target_link_libraries(cpptoxml ${QT_LIBRARIES} ${QT_QTMAIN_LIBRARY})
-set_target_properties(cpptoxml PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+foreach (p cpptoxml cpptolua cpptojson)
+    target_link_libraries(${p} ${QT_LIBRARIES} ${QT_QTMAIN_LIBRARY})
+    set_target_properties(${p} PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+    install(TARGETS ${p} DESTINATION bin)
+endforeach(p)
 
-install(TARGETS cpptoxml DESTINATION bin)
 
