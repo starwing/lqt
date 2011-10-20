@@ -25,22 +25,22 @@ end
 
 function fix_operators(index)
 	for f in pairs(index) do
-		if f.label == "Function" then
-			if f.xarg.name:match("^operator") and f.xarg.friend then
-				if f[1].xarg.type_base == f.xarg.member_of then
+		if f.type == "Function" then
+			if f.name:match("^operator") and f.friend then
+				if f[1].type_base == f.member_of then
 					-- overloaded friend operator - its first argument is 'this', 
 					-- needs to be removed
 					table.remove(f, 1)
 					table.remove(f.arguments, 1)
-					if f.xarg.name == 'operator-' and #f.arguments == 0 then
+					if f.name == 'operator-' and #f.arguments == 0 then
 						-- use '_' as a marker for unary minus
-						f.xarg.name = 'operator_'
+						f.name = 'operator_'
 					end
 				else
 					-- operator in form: number OP class - do not bind these
 					f.ignore = true
 				end
-			elseif is_helper_function(f.xarg.name) then
+			elseif is_helper_function(f.name) then
 				f.ignore = true
 			end
 		end
@@ -48,9 +48,9 @@ function fix_operators(index)
 end
 
 function call_line(f)
-	local op = operators.get_operator(f.xarg.name)
+	local op = operators.get_operator(f.name)
 	if op == "*" and #f.arguments == 0 then
-		ignore(f.xarg.fullname, "pointer dereference operator", f.xarg.member_of_class)
+		ignore(f.fullname, "pointer dereference operator", f.member_of_class)
 		return nil
 	elseif op == '_' then
 		-- unary minus

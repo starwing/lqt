@@ -117,11 +117,11 @@ function(build_qt_lib_binding BINDING_HEADER)
 	endif()
 
 	if(NOT REUSE_FILES)
-		set (GEN_XML ${LQT_GEN_DIR}/${BINDING_NAME}.xml)
-		add_custom_target(generate_${BINDING_NAME}_xml 	COMMAND cpptoxml 
-								${BINDING_HEADER} 
+		set (GEN_XML ${LQT_GEN_DIR}/${BINDING_NAME}.lua)
+		add_custom_target(generate_${BINDING_NAME}_xml COMMAND cpptolua 
+		    ${QT_INCLUDE_DIR}/${BINDING_HEADER}/${BINDING_HEADER}
 								-C ${PP_CONFIG}
-								-Q ${QT_INCLUDE_DIR} 
+								-I ${QT_INCLUDE_DIR} 
 								-o ${GEN_XML}
 							COMMENT "Generating XML: running cpptoxml on ${BINDING_NAME} "
 							VERBATIM)
@@ -188,7 +188,11 @@ function(build_qt_lib_binding BINDING_HEADER)
 											${${COMMON}_HPP} 
 											${${COMMON}_MOC})
 											
-	target_link_libraries(${BINDING_NAME} ${QT_LIBRARIES} ${LUA_LIBRARIES})		
+	foreach (I ${ARGV})
+		string(TOUPPER ${I} LIBRARY_NAME)
+		set(LIBRARIES ${LIBRARIES} ${QT_${LIBRARY_NAME}_LIBRARY})
+	endforeach (I)
+	target_link_libraries(${BINDING_NAME} ${LIBRARIES} ${LUA_LIBRARIES})		
 	set_target_properties(${BINDING_NAME} PROPERTIES PREFIX "" COMPILE_DEFINITIONS "MODULE_${BINDING_NAME}")
 
 	if(LQT_BUILDIN_CPPTOXML)

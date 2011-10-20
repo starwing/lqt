@@ -4,11 +4,11 @@ local function get_variables(class)
     local vars = {}
     local function traverse(c)
         for i, var in ipairs(c) do
-            if var.label == "Variable" and var.xarg.access == "public" then
+            if var.type == "Variable" and var.access == "public" then
                 table.insert(vars, var)
             end
         end
-        for b in string.gmatch(c.xarg.bases or '', '([^;]+);') do
+        for _, b in ipairs(c.bases or {}) do
             local base = fullnames[b]
             if base then traverse(base) end
         end
@@ -22,25 +22,25 @@ function fill_properties(classes)
         local props = {}
         local vars = get_variables(c)
         for i, var in ipairs(vars) do
-            local targetType = typesystem[var.xarg.type_name]
+            local targetType = typesystem[var.type_name]
             if targetType then
-                local sget = typesystem[c.xarg.fullname..'*'].get(1)
+                local sget = typesystem[c.fullname..'*'].get(1)
                 local getter =
-                  '  ' .. c.xarg.fullname .. '* self = ' .. sget .. ';\n' ..
-                  '  lqtL_selfcheck(L, self, "'..c.xarg.fullname..'");\n' ..
-                  '  ' .. targetType.push('self->'..var.xarg.name) .. ';\n' ..
+                  '  ' .. c.fullname .. '* self = ' .. sget .. ';\n' ..
+                  '  lqtL_selfcheck(L, self, "'..c.fullname..'");\n' ..
+                  '  ' .. targetType.push('self->'..var.name) .. ';\n' ..
                   '  return 1;\n'
                 
                 local setter
-                if not var.xarg.type_constant then
+                if not var.type_constant then
                     setter = 
-                  '  ' .. c.xarg.fullname .. '* self = ' .. sget .. ';\n' ..
-                  '  lqtL_selfcheck(L, self, "'..c.xarg.fullname..'");\n' ..
-                  '  self->' .. var.xarg.name .. ' = ' .. targetType.get(3) .. ';\n' ..
+                  '  ' .. c.fullname .. '* self = ' .. sget .. ';\n' ..
+                  '  lqtL_selfcheck(L, self, "'..c.fullname..'");\n' ..
+                  '  self->' .. var.name .. ' = ' .. targetType.get(3) .. ';\n' ..
                   '  return 0;\n'
                 end
 
-                table.insert(props, { class=c.xarg.cname, name = var.xarg.name, type = var.xarg.type_name,
+                table.insert(props, { class=c.cname, name = var.name, type = var.type_name,
                     getter = getter, setter = setter })
             end
         end
@@ -63,8 +63,8 @@ function fill_properties(classes)
                 setters[i] = '  {"'..s.name..'", '..s.class..'_set_'..s.name..'},'
             end
             c.properties = properties..'\n'..
-                'static luaL_Reg lqt_getters'..c.xarg.id..'[] = {\n'..table.concat(getters, '\n')..'  {NULL, NULL}\n};\n\n' ..
-                'static luaL_Reg lqt_setters'..c.xarg.id..'[] = {\n'..table.concat(setters, '\n')..'  {NULL, NULL}\n};\n\n'
+                'static luaL_Reg lqt_getters_'..c.id..'[] = {\n'..table.concat(getters, '\n')..'  {NULL, NULL}\n};\n\n' ..
+                'static luaL_Reg lqt_setters_'..c.id..'[] = {\n'..table.concat(setters, '\n')..'  {NULL, NULL}\n};\n\n'
         end
     end
 end

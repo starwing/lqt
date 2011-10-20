@@ -592,7 +592,7 @@ int main(int argc, char **argv)
     if (!noCode)
     {
         LuaTableVisitor visitor((CodeModelItem)f_model, !dontResolve);
-        QString luaTable = visitor.visit(model_static_cast<CodeModelItem>(f_model));
+        QString luaTable = "return " + visitor.visit(model_static_cast<CodeModelItem>(f_model));
         WriteFile(outputFile, luaTable);
     }
 

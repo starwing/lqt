@@ -15,11 +15,35 @@ local cpp_files = {}
 -- table of classes by their cname
 local classlist = {}
 
+local function table_to_string(t, lvl)
+    if type(t) == 'string' then
+        return ('%q'):format(t)
+    elseif type(t) == 'table' then
+        local lvl = lvl or 0
+        local lvlstring = ('  '):rep(lvl)
+        local lvl2string = ('  '):rep(lvl+1)
+        local st = {"{\n"}
+        for k, v in pairs(t) do
+            local cur = #st
+            st[cur + 1] = lvl2string
+            st[cur + 2] = "["
+            st[cur + 3] = table_to_string(k, lvl+1)
+            st[cur + 4] = "] = "
+            st[cur + 5] = table_to_string(v, lvl+1)
+            st[cur + 6] = ",\n"
+        end
+        st[#st + 1] = lvlstring
+        st[#st + 1] = "}"
+        return table.concat(st)
+    end
+    return tostring(t)
+end
+
 --- Copies functions from the index.
 function copy_functions(index)
 	for e in pairs(index) do
-		if e.label:match'^Function' then
-			e.label = 'Function'
+		if e.type:match'^Function' then
+			e.type = 'Function'
 			functions[e] = true
 		end
 	end
@@ -28,30 +52,30 @@ end
 
 function fix_arguments(index)
 	for a in pairs(index) do
-		if a.label=='Argument'
-			and a.xarg.default=='1'
-			and (not string.match(a.xarg.defaultvalue, '^[-+]?%d+%.?%d*[L]?$'))
-			and (not string.match(a.xarg.defaultvalue, '^".*"$'))
-			and a.xarg.defaultvalue~='true'
-			and a.xarg.defaultvalue~='false'
-			and (not string.match(a.xarg.defaultvalue, '^0[xX]%d+$')) then
-			local dv, call = string.match(a.xarg.defaultvalue, '(.-)(%(%))')
-			dv = dv or a.xarg.defaultvalue
+		if a.type=='Argument'
+			and a.default
+			and (not string.match(a.defaultvalue, '^[-+]?%d+%.?%d*[L]?$'))
+			and (not string.match(a.defaultvalue, '^".*"$'))
+			and a.defaultvalue~='true'
+			and a.defaultvalue~='false'
+			and (not string.match(a.defaultvalue, '^0[xX]%d+$')) then
+			local dv, call = string.match(a.defaultvalue, '(.-)(%(%))')
+			dv = dv or a.defaultvalue
 			call = call or ''
-			local context = a.xarg.context
+			local context = a.context
 			while not fullnames[context..'::'..dv] and context~='' do
 				context = string.match(context, '^(.*)::') or ''
 			end
 			if fullnames[context..'::'..dv] then
-				if fullnames[context..'::'..dv].xarg.name==fullnames[context..'::'..dv].xarg.member_of_class then
+				if fullnames[context..'::'..dv].name==fullnames[context..'::'..dv].member_of_class then
 					context = string.match(context, '^(.*)::') or ''
 				end
-				a.xarg.defaultvalue = context..'::'..dv..call
+				a.defaultvalue = context..'::'..dv..call
 			elseif fullnames[dv] then
-				a.xarg.defaultvalue = dv..call
+				a.defaultvalue = dv..call
 			else
-				a.xarg.default = nil
-				a.xarg.defaultvalue = nil
+				a.default = nil
+				a.defaultvalue = nil
 			end
 		end
 	end
@@ -64,14 +88,14 @@ function fix_functions()
 		local args = {}
 		for i, a in ipairs(f) do
 			-- avoid bogus 'void' arguments
-			if a.xarg.type_name=='void' and i==1 and f[2]==nil then break end
-			if a.label=='Argument' then
+			if a.type_name=='void' and i==1 and f[2]==nil then break end
+			if a.type=='Argument' then
 				table.insert(args, a)
 			end
 		end
 		f.arguments = args
-		f.return_type = f.xarg.type_name
-		if f.xarg.type_name=='void' then
+		f.return_type = f.type_name
+		if f.type_name=='void' then
 			f.return_type = nil
 		end
 	end
@@ -80,12 +104,12 @@ end
 --- Determines, if a class is public.
 function class_is_public(c)
 	repeat
-		if c.xarg.access~='public' then return false end
-		if c.xarg.member_of_class then
-			local p = fullnames[c.xarg.member_of_class]
+		if c.access~='public' then return false end
+		if c.member_of_class then
+			local p = fullnames[c.member_of_class]
 			assert(p, 'member_of_class should exist')
-			assert(p.label=='Class', 'member_of_class should be a class')
-			c = fullnames[c.xarg.member_of_class]
+			assert(p.type=='Class', 'member_of_class should be a class')
+			c = fullnames[c.member_of_class]
 		else
 			return true
 		end
@@ -96,13 +120,13 @@ end
 -- where appropriate.
 function copy_classes(index)
 	for e in pairs(index) do
-		if e.label=='Class' then
-			e.xarg.cname = string.gsub(e.xarg.fullname, '::', '_LQT_')
+		if e.type=='Class' then
+			e.cname = string.gsub(e.fullname, '::', '_LQT_')
 			if class_is_public(e)
-				and not e.xarg.fullname:match'%b<>' then
+				and not e.fullname:match'%b<>' then
 				classes[e] = true
-			elseif not e.xarg.fullname:match'%b<>' then
-				ignore(e.xarg.fullname, 'not public')
+			elseif not e.fullname:match'%b<>' then
+				ignore(e.fullname, 'not public')
 			else
 				if templates.should_copy(e) then
 					templates.create(e, classes)
@@ -112,7 +136,7 @@ function copy_classes(index)
 	end
 	templates.finish(index)
 	for c in pairs(classes) do
-		classlist[c.xarg.cname] = c
+		classlist[c.cname] = c
 	end
 end
 
@@ -122,19 +146,22 @@ function fix_methods_wrappers()
 		c.shell = c.shell and (next(c.virtuals)~=nil)
 		for _, constr in ipairs(c.constructors) do
 			if c.shell then
-				local shellname = 'lqt_shell_'..c.xarg.cname
+				local shellname = 'lqt_shell_'..c.cname
 				constr.calling_line = 'new '..shellname..'(L'
 				if #(constr.arguments)>0 then constr.calling_line = constr.calling_line .. ', ' end
 			else
-				local shellname = c.xarg.fullname
+				local shellname = c.fullname
 				constr.calling_line = 'new '..shellname..'('
 			end
 			for i=1,#(constr.arguments) do
 				constr.calling_line = constr.calling_line .. (i==1 and '' or ', ') .. 'arg' .. i
 			end
 			constr.calling_line = '*('..constr.calling_line .. '))'
-			constr.xarg.static = '1'
-			constr.return_type = constr.xarg.scope..'&'
+			constr.static = true
+                        if not constr.scope then
+                            print(table_to_string(constr))
+                        end
+			constr.return_type = constr.scope..'&'
 		end
 		if c.destructor then
 			c.destructor.return_type = nil
@@ -148,14 +175,14 @@ function get_qobjects()
 	local function is_qobject(c)
 		if c==nil then return false end
 		if c.qobject then return true end
-		if c.xarg.fullname=='QObject' then
+		if c.fullname=='QObject' then
 			c.qobject = true
 			return true
 		end
-		for b in string.gmatch(c.xarg.bases or '', '([^;]+);') do
+		for _, b in ipairs(c.bases or {}) do
 			local base = fullnames[b]
 			if is_qobject(base) then
-				--debug(c.xarg.fullname, "is a QObject")
+				--debug(c.fullname, "is a QObject")
 				c.qobject = true
 				return true
 			end
@@ -170,9 +197,9 @@ end
 
 
 local should_wrap = function(f)
-	local name = f.xarg.name
+	local name = f.name
 	-- unfixed operator and friend, causes trouble with QDataStream
-	-- if f.xarg.friend and #f.arguments ==2 then return false end
+	-- if f.friend and #f.arguments ==2 then return false end
 	-- not an operator - accept
 	if not name:match('^operator') then return true end
 	-- accept supported operators
@@ -185,20 +212,20 @@ end
 function distinguish_methods()
 	for c in pairs(classes) do
 		local construct, destruct, normal = {}, nil, {}
-		local n = c.xarg.name:gsub('%b<>', '')
+		local n = c.name:gsub('%b<>', '')
 
 		local copy = nil
 		for _, f in ipairs(c) do
-			if n==f.xarg.name then
+			if n==f.name then
 				table.insert(construct, f)
-			elseif f.xarg.name:match'~' then
+			elseif f.name:match'~' then
 				destruct = f
 			else
 				if should_wrap(f)
-					and (not f.xarg.member_template_parameters) then
+					and (not f.member_template_parameters) then
 					table.insert(normal, f)
 				else
-					ignore(f.xarg.fullname, 'operator/template/friend', c.xarg.name)
+					ignore(f.fullname, 'operator/template/friend', c.name)
 				end
 			end
 		end
@@ -213,9 +240,9 @@ end
 function fill_public_destr()
 	local function destr_is_public(c)
 		if c.destructor then
-			return c.destructor.xarg.access=='public'
+			return c.destructor.access=='public'
 		else
-			for b in string.gmatch(c.xarg.bases or '', '([^;]+);') do
+			for _, b in ipairs(c.bases or {}) do
 				local base = fullnames[b]
 				if base and not destr_is_public(base) then
 					return false
@@ -231,44 +258,40 @@ end
 
 
 function  generate_default_copy_constructor(c)
-	if not c.xarg then return end
-	
+	if not c then return end
+
 	local copy = {
 		[1] = {
-			label = "Argument";
-			xarg = {
-				context = c.xarg.name;
-				id = next_id();
-				name = "p";
-				scope = "";
-				type_base = c.xarg.name;
-				type_constant = "1";
-				type_name = c.xarg.name .. " const&";
-				type_reference = "1";
-			}
-		};
-		label = "Function";
-		return_type = c.xarg.name;
-		xarg = {
-			access = "public";
-			context = c.xarg.name;
-			fullname = c.xarg.name.."::"..c.xarg.name;
+			type = "Argument";
+			context = c.name;
 			id = next_id();
-			inline = "1";
-			member_of = c.xarg.name;
-			member_of_class = c.xarg.name;
-			name = c.xarg.name;
-			scope = c.xarg.name;
-			type_base = c.xarg.name;
-			type_name = c.xarg.name;
+			name = "p";
+			scope = "";
+			type_base = c.name;
+			type_constant = true;
+			type_name = c.name .. " const&";
+			type_reference = true; 
 		};
+		type = "Function";
+		return_type = c.name;
+		access = "public";
+		context = c.name;
+		fullname = c.name.."::"..c.name;
+		id = next_id();
+		inline = true;
+		member_of = c.name;
+		member_of_class = c.name;
+		name = c.name;
+		scope = c.name;
+		type_base = c.name;
+		type_name = c.name;
 	}
 	copy.arguments = {copy[1]}
-	
+
 	table.insert(c, copy)
 	table.insert(c.constructors, copy)
 	functions[copy] = true
-	
+
 	return copy
 end
 
@@ -277,9 +300,9 @@ end
 -- in Qt 4.6
 local function has_private_fields(c)
 	for _,v in ipairs(c) do
-		if v.label == 'Variable' then
-			if v.xarg.type_base:match('Private') then
-				ignore(c.xarg.fullname, 'cannot create copy constructor', v.xarg.fullname .. ' : ' ..v.xarg.type_base)
+		if v.type == 'Variable' then
+			if v.type_base:match('Private') then
+				ignore(c.fullname, 'cannot create copy constructor', v.fullname .. ' : ' ..v.type_base)
 				return true
 			end
 		end
@@ -292,7 +315,7 @@ function fill_copy_constructor()
 		local copy = nil
 		for _, f in ipairs(c.constructors) do
 			if #(f.arguments)==1
-				and f.arguments[1].xarg.type_name==c.xarg.fullname..' const&' then
+				and f.arguments[1].type_name==c.fullname..' const&' then
 				copy = f
 				break
 			end
@@ -301,12 +324,12 @@ function fill_copy_constructor()
 	end
 	local function copy_constr_is_public(c)
 		if c.copy_constructor then
-			return (c.copy_constructor.xarg.access=='public')
-			or (c.copy_constructor.xarg.access=='protected')
+			return (c.copy_constructor.access=='public')
+			or (c.copy_constructor.access=='protected')
 		else
 			if has_private_fields(c) then return false end
 			local ret = nil
-			for b in string.gmatch(c.xarg.bases or '', '([^;]+);') do
+			for _, b in ipairs(c.bases or {}) do
 				local base = fullnames[b]
 				if base and not copy_constr_is_public(base) then
 					return false
@@ -327,19 +350,19 @@ function fill_implicit_constructor()
 	typesystem.can_convert = {}
 	for c in pairs(classes) do
 		for _,f in ipairs(c) do
-			if f.label:match("^Function") then
+			if f.type:match("^Function") then
 				-- find non-explicit constructor, which has 1 argument of type different
 				-- from class, i.e. an implicit conversion constructor
-				if f.xarg.name == c.xarg.name
+				if f.name == c.name
 					and #f == 1
-					and (not f.xarg.access or f.xarg.access == "public")
-					and f[1].xarg.type_base ~= c.xarg.name
-					and not f[1].xarg.type_base:match('Private$')
-					-- and not f.xarg.explicit
+					and (not f.access or f.access == "public")
+					and f[1].type_base ~= c.name
+					and not f[1].type_base:match('Private$')
+					-- and not f.explicit
 					and not c.abstract
 				then
-					local class_name = c.xarg.cname
-					local from_type = f[1].xarg.type_base
+					local class_name = c.cname
+					local from_type = f[1].type_base
 					typesystem.can_convert[class_name] = typesystem.can_convert[class_name] or { from = {}, class = c }
 					typesystem.can_convert[class_name].from[ from_type ] = f
 					local safe_from = from_type:gsub('[<>*]', '_'):gsub('::', '_LQT_')
@@ -351,7 +374,7 @@ end
 
 local function generate_implicit_code(class_name, t)
 	local c = t.class
-	local fullname = c.xarg.fullname
+	local fullname = c.fullname
 	local luaname = fullname:gsub('::', '.')
 
 	local test_header = 'bool lqt_canconvert_' .. class_name .. '(lua_State *L, int n)'
@@ -363,7 +386,7 @@ local function generate_implicit_code(class_name, t)
 
 	local order = {}
 	for _, f in pairs(t.from) do
-		local typ = f[1].xarg.type_name
+		local typ = f[1].type_name
 		if not typesystem[typ] then
 			ignore(typ, "implicit constructor - unknown type", _)
 		else
@@ -380,7 +403,7 @@ local function generate_implicit_code(class_name, t)
 				..'    return true;\n'
 				
 				local newtype = fullname .. '(arg)'
-				if c.shell then newtype = 'lqt_shell_'..c.xarg.cname..'(L,arg)' end
+				if c.shell then newtype = 'lqt_shell_'..c.cname..'(L,arg)' end
 				
 				-- HACK: QVariant with 'char const*' argument - force it to QByteArray
 				if fullname == 'QVariant' and typ == 'char const*' then
@@ -431,7 +454,7 @@ local put_class_in_filesystem = lqt.classes.insert
 
 function fill_typesystem_with_classes()
 	for c in pairs(classes) do
-		classes[c] = put_class_in_filesystem(c.xarg.fullname)
+		classes[c] = put_class_in_filesystem(c.fullname)
 	end
 end
 
@@ -442,50 +465,50 @@ function fill_wrapper_code(f)
 	local stack_args, defects = '', 0
 	local has_args = true
 	local wrap, line = '  int oldtop = lua_gettop(L);\n', ''
-	if f.xarg.abstract then
-		ignore(f.xarg.fullname, 'abstract method', f.xarg.member_of_class)
+	if f.abstract then
+		ignore(f.fullname, 'abstract method', f.member_of_class)
 		return nil
 	end
-	if f.xarg.member_of_class and f.xarg.static~='1' then
-		if not typesystem[f.xarg.member_of_class..'*'] then
-			ignore(f.xarg.fullname, 'not a member of wrapped class', f.xarg.member_of_class)
+	if f.member_of_class and not f.static then
+		if not typesystem[f.member_of_class..'*'] then
+			ignore(f.fullname, 'not a member of wrapped class', f.member_of_class)
 			return nil
 		end
-		stack_args = stack_args .. typesystem[f.xarg.member_of_class..'*'].onstack
+		stack_args = stack_args .. typesystem[f.member_of_class..'*'].onstack
 		defects = defects + 7 -- FIXME: arbitrary
-		if f.xarg.constant=='1' then
+		if f.constant then
 			defects = defects + 8 -- FIXME: arbitrary
 		end
-		local sget, sn = typesystem[f.xarg.member_of_class..'*'].get(stackn)
-		wrap = wrap .. '  ' .. f.xarg.member_of_class .. '* self = ' .. sget .. ';\n'
+		local sget, sn = typesystem[f.member_of_class..'*'].get(stackn)
+		wrap = wrap .. '  ' .. f.member_of_class .. '* self = ' .. sget .. ';\n'
 		stackn = stackn + sn
-		wrap = wrap .. '  lqtL_selfcheck(L, self, "'..f.xarg.member_of_class..'");\n'
+		wrap = wrap .. '  lqtL_selfcheck(L, self, "'..f.member_of_class..'");\n'
 		--print(sget, sn)
-		if operators.is_operator(f.xarg.name) then
+		if operators.is_operator(f.name) then
 			line, has_args = operators.call_line(f)
 			if not line then return nil end
 		else
-			line = 'self->'..f.xarg.fullname..'('
+			line = 'self->'..f.fullname..'('
 		end
 	else
-		line = f.xarg.fullname..'('
+		line = f.fullname..'('
 	end
 	for i, a in ipairs(f.arguments) do
-		if not typesystem[a.xarg.type_name] then
-			ignore(f.xarg.fullname, 'unkown argument type', a.xarg.type_name)
+		if not typesystem[a.type_name] then
+			ignore(f.fullname, 'unkown argument type', a.type_name)
 			return nil
 		end
-		local aget, an, arg_as = typesystem[a.xarg.type_name].get(stackn)
-		stack_args = stack_args .. typesystem[a.xarg.type_name].onstack
-		if typesystem[a.xarg.type_name].defect then defects = defects + typesystem[a.xarg.type_name].defect end
-		wrap = wrap .. '  ' .. argument_name(arg_as or a.xarg.type_name, 'arg'..argn) .. ' = '
-		if a.xarg.default=='1' and an>0 then
+		local aget, an, arg_as = typesystem[a.type_name].get(stackn)
+		stack_args = stack_args .. typesystem[a.type_name].onstack
+		if typesystem[a.type_name].defect then defects = defects + typesystem[a.type_name].defect end
+		wrap = wrap .. '  ' .. argument_name(arg_as or a.type_name, 'arg'..argn) .. ' = '
+		if a.default and an>0 then
 			wrap = wrap .. 'lua_isnoneornil(L, '..stackn..')'
 			for j = stackn+1,stackn+an-1 do
 				wrap = wrap .. ' && lua_isnoneornil(L, '..j..')'
 			end
-			local dv = a.xarg.defaultvalue
-			wrap = wrap .. ' ? static_cast< ' .. a.xarg.type_name .. ' >(' .. dv .. ') : '
+			local dv = a.defaultvalue
+			wrap = wrap .. ' ? static_cast< ' .. a.type_name .. ' >(' .. dv .. ') : '
 		end
 		wrap = wrap .. aget .. ';\n'
 		line = line .. (argn==1 and 'arg' or ', arg') .. argn
@@ -501,7 +524,7 @@ function fill_wrapper_code(f)
 	wrap = wrap .. '  ' .. line .. ';\n  lua_settop(L, oldtop);\n' -- lua_pop(L, '..stackn..');\n'
 	if f.return_type then
 		if not typesystem[f.return_type] then
-			ignore(f.xarg.fullname, 'unknown return type', f.return_type)
+			ignore(f.fullname, 'unknown return type', f.return_type)
 			return nil
 		end
 		local rput, rn = typesystem[f.return_type].push'ret'
@@ -520,16 +543,16 @@ end
 function fill_test_code(f)
 	local stackn = 1
 	local test = ''
-	if f.xarg.member_of_class and f.xarg.static~='1' then
-		if not typesystem[f.xarg.member_of_class..'*'] then return nil end -- print(f.xarg.member_of_class) return nil end
-		local stest, sn = typesystem[f.xarg.member_of_class..'*'].test(stackn)
+	if f.member_of_class and not f.static then
+		if not typesystem[f.member_of_class..'*'] then return nil end -- print(f.member_of_class) return nil end
+		local stest, sn = typesystem[f.member_of_class..'*'].test(stackn)
 		test = test .. ' && ' .. stest
 		stackn = stackn + sn
 	end
 	for i, a in ipairs(f.arguments) do
-		if not typesystem[a.xarg.type_name] then return nil end -- print(a.xarg.type_name) return nil end
-		local atest, an = typesystem[a.xarg.type_name].test(stackn)
-		if a.xarg.default=='1' and an>0 then
+		if not typesystem[a.type_name] then return nil end -- print(a.type_name) return nil end
+		local atest, an = typesystem[a.type_name].test(stackn)
+		if a.default and an>0 then
 			test = test .. ' && (lqtL_missarg(L, ' .. stackn .. ', ' .. an .. ') || '
 			test = test .. atest .. ')'
 		else
@@ -549,7 +572,7 @@ function fill_wrappers()
 	for f in pairs(functions) do
 		local nf = fill_wrapper_code(f)
 		if nf then
-			nf = assert(fill_test_code(nf), nf.xarg.fullname) -- MUST pass
+			nf = assert(fill_test_code(nf), nf.fullname) -- MUST pass
 		else
 			-- failed to generate wrapper
 			functions[f] = nil
@@ -569,21 +592,21 @@ function print_wrappers()
 			-- on the environment then we can leave these in the
 			-- metatable
 			if f.wrapper_code and not f.ignore then
-				local out = 'static int lqt_bind'..f.xarg.id
+				local out = 'static int lqt_bind_'..f.id
 				..' (lua_State *L) {\n'.. f.wrapper_code .. '}\n'
-				if f.xarg.access=='public' then
+				if f.access=='public' then
 					--print_meta(out)
 					wrappers = wrappers .. out .. '\n'
-					meta[f] = f.xarg.name
+					meta[f] = f.name
 				end
 			end
 		end
 		if not c.abstract then
 			for _, f in ipairs(c.constructors) do
 				if f.wrapper_code then
-					local out = 'static int lqt_bind'..f.xarg.id
+					local out = 'static int lqt_bind_'..f.id
 					    ..' (lua_State *L) {\n'.. f.wrapper_code .. '}\n'
-					if f.xarg.access=='public' then
+					if f.access=='public' then
 						--print_meta(out)
 						wrappers = wrappers .. out .. '\n'
 						meta[f] = 'new'
@@ -591,11 +614,11 @@ function print_wrappers()
 				end
 			end
 		end
-		--local shellname = 'lqt_shell_'..string.gsub(c.xarg.fullname, '::', '_LQT_')
-		local lua_name = string.gsub(c.xarg.fullname, '::', '.')
-		local out = 'static int lqt_delete'..c.xarg.id..' (lua_State *L) {\n'
-		out = out ..'  '..c.xarg.fullname..' *p = static_cast<'
-			..c.xarg.fullname..'*>(lqtL_toudata(L, 1, "'..lua_name..'*"));\n'
+		--local shellname = 'lqt_shell_'..string.gsub(c.fullname, '::', '_LQT_')
+		local lua_name = string.gsub(c.fullname, '::', '.')
+		local out = 'static int lqt_delete_'..c.id..' (lua_State *L) {\n'
+		out = out ..'  '..c.fullname..' *p = static_cast<'
+			..c.fullname..'*>(lqtL_toudata(L, 1, "'..lua_name..'*"));\n'
 		if c.public_destr then
 			out = out .. '  if (p) delete p;\n'
 		end
@@ -622,16 +645,16 @@ local print_metatable = function(c)
 				local itisnew = true
 				for sa, g in pairs(duplicates) do
 					if sa==f.stack_arguments then
-					--debug("function equal: ", f.xarg.fullname, f.stack_arguments, sa, f.defects, g.defects)
+					--debug("function equal: ", f.fullname, f.stack_arguments, sa, f.defects, g.defects)
 						if f.defects<g.defects then
 						else
-							ignore(f.xarg.fullname, "duplicate function", f.stack_arguments)
+							ignore(f.fullname, "duplicate function", f.stack_arguments)
 							itisnew = false
 						end
 					elseif string.match(sa, "^"..f.stack_arguments) then -- there is already a version with more arguments
-						--debug("function superseded: ", f.xarg.fullname, f.stack_arguments, sa, f.defects, g.defects)
+						--debug("function superseded: ", f.fullname, f.stack_arguments, sa, f.defects, g.defects)
 					elseif string.match(f.stack_arguments, '^'..sa) then -- there is already a version with less arguments
-						--debug("function superseding: ", f.xarg.fullname, f.stack_arguments, sa, f.defects, g.defects)
+						--debug("function superseding: ", f.fullname, f.stack_arguments, sa, f.defects, g.defects)
 					end
 				end
 				if itisnew then
@@ -648,43 +671,44 @@ local print_metatable = function(c)
 		for sa, f in pairs(duplicates) do
 			numfinal = numfinal + 1
 		end
-		if numinitial-numfinal>0 then debug(c.xarg.fullname, "suppressed:", numinitial-numfinal) end
+		if numinitial-numfinal>0 then debug(c.fullname, "suppressed:", numinitial-numfinal) end
 		--]]
 		methods[n] = duplicates
 	end
 	for n, l in pairs(methods) do
 		local name = operators.rename_operator(n)
-		local disp = 'static int lqt_dispatcher_'..name..c.xarg.id..' (lua_State *L) {\n'
+		local disp = 'static int lqt_dispatcher_'..name.."_"..c.id..' (lua_State *L) {\n'
 		local testcode = {}
 		for tc, f in pairs(l) do
-			disp = disp..'  if ('..f.test_code..') return lqt_bind'..f.xarg.id..'(L);\n'
+			disp = disp..'  if ('..f.test_code..') return lqt_bind_'..f.id..'(L);\n'
 			testcode[#testcode+1] = tc
 		end
 		-- disp = disp .. '  lua_settop(L, 0);\n'
 		disp = disp .. '  const char * args = lqtL_getarglist(L);\n'
 		disp = disp .. '  lua_pushfstring(L, "%s(%s): incorrect or extra arguments, expecting: %s.", "' ..
-			c.xarg.fullname..'::'..n..'", args, '..string.format("%q", table.concat(testcode, ' or ')) .. ');\n'
+			c.fullname..'::'..n..'", args, '..string.format("%q", table.concat(testcode, ' or ')) .. ');\n'
 		disp = disp .. '  return lua_error(L);\n}\n'
 		--print_meta(disp)
 		wrappers = wrappers .. disp .. '\n'
 	end
-	local metatable = 'static luaL_Reg lqt_metatable'..c.xarg.id..'[] = {\n'
+	local metatable = 'static luaL_Reg lqt_metatable_'..c.id..'[] = {\n'
 	for n, l in pairs(methods) do
 		local nn = operators.rename_operator(n)
-		metatable = metatable .. '  { "'..nn..'", lqt_dispatcher_'..nn..c.xarg.id..' },\n'
+		metatable = metatable .. '  { "'..nn..'", lqt_dispatcher_'..nn.."_"..c.id..' },\n'
 	end
-	metatable = metatable .. '  { "delete", lqt_delete'..c.xarg.id..' },\n'
+	metatable = metatable .. '  { "delete", lqt_delete_'..c.id..' },\n'
 	metatable = metatable .. '  { 0, 0 },\n};\n'
 	--print_meta(metatable)
 	wrappers = wrappers .. metatable .. '\n'
 	local bases = ''
-	for b in string.gmatch(c.xarg.bases_with_attributes or '', '([^;]*);') do
+        local baset = c.bases or {}
+	for _, b in ipairs(baset) do
 		if not string.match(b, '^virtual') then
 			b = string.gsub(b, '^[^%s]* ', '')
-			bases = bases .. '  {"'..string.gsub(b,'::','.')..'*", (char*)(void*)static_cast<'..b..'*>(('..c.xarg.fullname..'*)1)-(char*)1},\n'
+			bases = bases .. '  {"'..string.gsub(b,'::','.')..'*", (char*)(void*)static_cast<'..b..'*>(('..c.fullname..'*)1)-(char*)1},\n'
 		end
 	end
-	bases = 'static lqt_Base lqt_base'..c.xarg.id..'[] = {\n'..bases..'  {NULL, 0}\n};\n'
+	bases = 'static lqt_Base lqt_base_'..c.id..'[] = {\n'..bases..'  {NULL, 0}\n};\n'
 	--print_meta(bases)
 	wrappers = wrappers .. bases .. '\n'
 	c.wrappers = wrappers
@@ -700,8 +724,8 @@ end
 
 
 function print_single_class(c)
-	local n = c.xarg.cname
-	local lua_name = string.gsub(c.xarg.fullname, '::', '.')
+	local n = c.cname
+	local lua_name = string.gsub(c.fullname, '::', '.')
 	local cppname = module_name..'_meta_'..n..'.cpp'
 	table.insert(cpp_files, n) -- global cpp_files
 	local fmeta = assert(io.open(module_name.._src..cppname, 'w'))
@@ -724,22 +748,22 @@ function print_single_class(c)
 	local getters_setters = 'NULL, NULL'
 	if c.properties then
 		print_meta(c.properties)
-		getters_setters = 'lqt_getters'..c.xarg.id..', lqt_setters'..c.xarg.id
+		getters_setters = 'lqt_getters_'..c.id..', lqt_setters_'..c.id
 	end
 	
 	print_meta('extern "C" LQT_EXPORT int luaopen_'..n..' (lua_State *L) {')
 	print_meta('\tlqtL_createclass(L, "'
 		..lua_name..'*", lqt_metatable'
-		..c.xarg.id..', '..getters_setters..', lqt_base'
-		..c.xarg.id..');')
+		.."_"..c.id..', '..getters_setters..', lqt_base'
+		.."_"..c.id..');')
 	
 	if c.implicit then
 		print_meta('\tluaL_getmetatable(L, "'..lua_name..'*");')
 		print_meta('\tlua_pushliteral(L, "__test");')
-		print_meta('\tlua_pushlightuserdata(L, (void*)&lqt_canconvert_'..c.xarg.cname..');')
+		print_meta('\tlua_pushlightuserdata(L, (void*)&lqt_canconvert_'..c.cname..');')
 		print_meta('\tlua_rawset(L, -3);')
 		print_meta('\tlua_pushliteral(L, "__convert");')
-		print_meta('\tlua_pushlightuserdata(L, (void*)&lqt_convert_'..c.xarg.cname..');')
+		print_meta('\tlua_pushlightuserdata(L, (void*)&lqt_convert_'..c.cname..');')
 		print_meta('\tlua_rawset(L, -3);')
 		print_meta('\tlua_pop(L, 1);')
 	end
@@ -755,16 +779,16 @@ QMetaObject lqt_shell_]]..n..[[::staticMetaObject;
 
 const QMetaObject *lqt_shell_]]..n..[[::metaObject() const {
         //int oldtop = lua_gettop(L);
-        lqtL_pushudata(L, this, "]]..c.xarg.fullname..[[*");
+        lqtL_pushudata(L, this, "]]..c.fullname..[[*");
         lua_getfield(L, -1, LQT_OBJMETASTRING);
         if (lua_isnil(L, -1)) {
                 lua_pop(L, 2);
-                return &]]..c.xarg.fullname..[[::staticMetaObject;
+                return &]]..c.fullname..[[::staticMetaObject;
         }
         lua_getfield(L, -2, LQT_OBJMETADATA);
         lqtL_touintarray(L);
-        //qDebug() << "copying qmeta object for slots in ]]..c.xarg.fullname..[[";
-        lqt_shell_]]..n..[[::staticMetaObject.d.superdata = &]]..c.xarg.fullname..[[::staticMetaObject;
+        //qDebug() << "copying qmeta object for slots in ]]..c.fullname..[[";
+        lqt_shell_]]..n..[[::staticMetaObject.d.superdata = &]]..c.fullname..[[::staticMetaObject;
         lqt_shell_]]..n..[[::staticMetaObject.d.stringdata = lua_tostring(L, -2);
         lqt_shell_]]..n..[[::staticMetaObject.d.data = (uint*)lua_touserdata(L, -1);
         lqt_shell_]]..n..[[::staticMetaObject.d.extradata = 0; // slot_metaobj->d.extradata;
@@ -777,9 +801,9 @@ const QMetaObject *lqt_shell_]]..n..[[::metaObject() const {
 
 int lqt_shell_]]..n..[[::qt_metacall(QMetaObject::Call call, int index, void **args) {
         //qDebug() << "fake calling!";
-        index = ]]..c.xarg.fullname..[[::qt_metacall(call, index, args);
+        index = ]]..c.fullname..[[::qt_metacall(call, index, args);
         if (index < 0) return index;
-        return lqtL_qt_metacall(L, this, lqtSlotAcceptor_]]..module_name..[[, call, "]]..c.xarg.fullname..[[*", index, args);
+        return lqtL_qt_metacall(L, this, lqtSlotAcceptor_]]..module_name..[[, call, "]]..c.fullname..[[*", index, args);
 }
 ]])
 	end
@@ -821,11 +845,11 @@ function print_class_list()
 	local big_picture = {}
 	local type_list_t = {}
 	for c in pairs(classes) do
-		local n = c.xarg.cname
+		local n = c.cname
 		if n=='QObject' then qobject_present = true end
 		print_single_class(c)
 		table.insert(big_picture, n)
-		table.insert(type_list_t, 'add_class \''..c.xarg.fullname..'\'\n')
+		table.insert(type_list_t, 'add_class \''..c.fullname..'\'\n')
 	end
 
 	local type_list_f = assert(io.open(module_name.._src..module_name..'_types.lua', 'w'))

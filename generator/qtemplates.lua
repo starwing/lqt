@@ -18,8 +18,8 @@ return {
 			"QVector<qreal>", "QVector<QColor>", "QVector<QTextFormat>", "QVector<QLineF>" },
 	},
 	qtnetwork = {
-		["QList<T>"] = { "QList<QSslError>", "QList<QSslCertificate>", "QList<QNetworkCookie>",
-			"QList<QSslCipher>", "QList<QNetworkAddressEntry>", "QList<QNetworkProxy>", 
+		["QList<T>"] = { --[["QList<QSslError>", "QList<QSslCertificate>",]] "QList<QNetworkCookie>",
+			--[["QList<QSslCipher>",]] "QList<QNetworkAddressEntry>", "QList<QNetworkProxy>", 
 			"QList<QHostAddress>", "QList<QUrl>", "QList<QModelIndex>" }
 	},
 	qtsql = {

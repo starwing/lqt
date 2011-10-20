@@ -113,17 +113,27 @@ function ignore(name, cause, context)
 	end
 end
 
-local xmlstream, idindex = dofile(path..'xml.lua')(readfile(filename))
+local xmlstream = dofile(filename)
+local idindex = {}
+do
+    local function walk(xmlstream)
+        idindex[xmlstream] = true
+        for _, e in ipairs(xmlstream) do
+            walk(e)
+        end
+    end
+    walk(xmlstream)
+end
 
 -- Remove duplicate entries (~4300/20000 for QtCore)
 local dups = {}
 local remove = {}
 for e in pairs(idindex) do
-	if e.xarg and e.xarg.id and dups[e.xarg.id] then
-		-- print('Duplicate!', dups[e.xarg.id], e.xarg.name, e.xarg.id)
+	if e and e.id and dups[e.id] then
+		-- print('Duplicate!', dups[e.id], e.name, e.id)
 		remove[e] = true
 	end
-	dups[e.xarg.id] = true
+	dups[e.id] = true
 end
 for e in pairs(remove) do
 	idindex[e] = nil
@@ -170,13 +180,13 @@ end
 
 local gen_id = 0
 for e in pairs(idindex) do
-	if e.xarg and e.xarg.id then
-		local id = assert(tonumber(e.xarg.id:match("_(%d+)")))
+	if e and e.id then
+		local id = assert(e.id)
 		if id > gen_id then gen_id = id + 1 end
 	end
 end	
 
-function next_id() gen_id = gen_id + 1; return "_" .. gen_id end
+function next_id() gen_id = gen_id + 1; return gen_id end
 
 
 --- Constructs the code that pushes arguments to the Lua stack.
@@ -185,8 +195,8 @@ function next_id() gen_id = gen_id + 1; return "_" .. gen_id end
 function make_pushlines(args)
 	local pushlines, stack = '', 0
 	for i, a in ipairs(args) do
-		if not typesystem[a.xarg.type_name] then return nil, a.xarg.type_name end
-		local apush, an = typesystem[a.xarg.type_name].push('arg'..i)
+		if not typesystem[a.type_name] then return nil, a.type_name end
+		local apush, an = typesystem[a.type_name].push('arg'..i)
 		pushlines = pushlines .. '    ' .. apush .. ';\n'
 		stack = stack + an
 	end
@@ -199,7 +209,7 @@ require 'classes'
 fullnames = {}
 
 for e in pairs(idindex) do
-	if e.xarg.fullname then fullnames[e.xarg.fullname] = e end
+	if e.fullname then fullnames[e.fullname] = e end
 end
 
 enums.preprocess(idindex)

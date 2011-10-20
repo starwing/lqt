@@ -8,7 +8,7 @@ local slots = {}
 
 function copy_signals(functions)
 	for f in pairs(functions) do
-		if f.xarg.signal=='1' then
+		if f.signal then
 			signals[f] = true
 		end
 	end
@@ -18,7 +18,7 @@ function slots_for_signals()
 	for sig in pairs(signals) do
 		local args, comma = '(', ''
 		for i, a in ipairs(sig.arguments) do
-			args = args .. comma .. a.xarg.type_name .. ' arg'..i
+			args = args .. comma .. a.type_name .. ' arg'..i
 			comma = ', '
 		end
 		args = args .. ')'
@@ -48,7 +48,7 @@ function slots_for_signals()
 ]]
 			end
 		else
-			ignore(sig.xarg.fullname, 'slot', stack)
+			ignore(sig.fullname, 'slot', stack)
 		end
 	end
 end

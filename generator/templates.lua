@@ -33,8 +33,8 @@ local idindex_add = {}
 
 --- Return true if an instance of templated class should be created.
 function should_copy(class)
-	return translate[class.xarg.fullname] or
-		(translate[module_name] and translate[module_name][class.xarg.fullname])
+	return translate[class.fullname] or
+		(translate[module_name] and translate[module_name][class.fullname])
 end
 
 --- Creates instantiated copies of template class.
@@ -57,12 +57,12 @@ function create(class, ret)
 				template_repare(v, orig, new)
 			end
 		end
-		if o.label and o.label:match'^Function' then
+		if o.type and o.type:match'^Function' then
 			idindex_add[o] = true -- will be copied to index, so that later it can be picked up by copy_functions
 		end
 	end
 
-	local name = class.xarg.fullname
+	local name = class.fullname
 	for _, t in ipairs(temps) do
 		local oclass, oparams = name:match('^(.+)<([^>]+)>$')
 		local tclass, tparams = t:match('^(.+)<([^>]+)>$')
@@ -70,7 +70,7 @@ function create(class, ret)
 			-- TODO: handle multiple template parameters
 			local copy = deepcopy(class)
 			template_repare(copy, oparams, tparams)
-			copy.xarg.cname = copy.xarg.fullname:gsub('[<>*]', '_'):gsub('::', '_LQT_')
+			copy.cname = copy.fullname:gsub('[<>*]', '_'):gsub('::', '_LQT_')
 			ret[copy] = true
 		else
 			ignore(name, 'template not bound')

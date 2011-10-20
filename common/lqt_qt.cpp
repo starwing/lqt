@@ -287,7 +287,6 @@ void lqtL_pushStringList(lua_State *L, const QList<QByteArray> &table) {
 #include <QDateTime>
 #include <QEasingCurve>
 #include <QHash>
-#include <QKeySequence>
 #include <QLine>
 #include <QLineF>
 #include <QList>
@@ -311,6 +310,7 @@ void lqtL_pushStringList(lua_State *L, const QList<QByteArray> &table) {
 #include <QFont>
 #include <QIcon>
 #include <QImage>
+#include <QKeySequence>
 #include <QMatrix>
 #include <QMatrix4x4>
 #include <QPalette>
@@ -355,8 +355,6 @@ int lqtL_qvariant_setValue(lua_State *L) {
 		self->setValue(*(QDate*)lqtL_toudata(L, 2, "QDate*"));
 	} else if (lqtL_testudata(L, 2, "QDateTime*")) {
 		self->setValue(*(QDateTime*)lqtL_toudata(L, 2, "QDateTime*"));
-	} else if (lqtL_testudata(L, 2, "QKeySequence*")) {
-		self->setValue(*(QKeySequence*)lqtL_toudata(L, 2, "QKeySequence*"));
 	} else if (lqtL_testudata(L, 2, "QLine*")) {
 		self->setValue(*(QLine*)lqtL_toudata(L, 2, "QLine*"));
 	} else if (lqtL_testudata(L, 2, "QLineF*")) {
@@ -400,6 +398,8 @@ int lqtL_qvariant_setValue(lua_State *L) {
 		self->setValue(*(QIcon*)lqtL_toudata(L, 2, "QIcon*"));
 	} else if (lqtL_testudata(L, 2, "QImage*")) {
 		self->setValue(*(QImage*)lqtL_toudata(L, 2, "QImage*"));
+	} else if (lqtL_testudata(L, 2, "QKeySequence*")) {
+		self->setValue(*(QKeySequence*)lqtL_toudata(L, 2, "QKeySequence*"));
 	} else if (lqtL_testudata(L, 2, "QMatrix*")) {
 		self->setValue(*(QMatrix*)lqtL_toudata(L, 2, "QMatrix*"));
 	} else if (lqtL_testudata(L, 2, "QMatrix4x4*")) {
@@ -473,7 +473,6 @@ int lqtL_qvariant_value(lua_State *L) {
 		case QVariant::Char: lqtL_passudata(L, new QChar(self->value<QChar>()), "QChar*"); return 1;
 		case QVariant::Date: lqtL_passudata(L, new QDate(self->value<QDate>()), "QDate*"); return 1;
 		case QVariant::DateTime: lqtL_passudata(L, new QDateTime(self->value<QDateTime>()), "QDateTime*"); return 1;
-		case QVariant::KeySequence: lqtL_passudata(L, new QKeySequence(self->value<QKeySequence>()), "QKeySequence*"); return 1;
 		case QVariant::Line: lqtL_passudata(L, new QLine(self->value<QLine>()), "QLine*"); return 1;
 		case QVariant::LineF: lqtL_passudata(L, new QLineF(self->value<QLineF>()), "QLineF*"); return 1;
 		case QVariant::List: lqtL_passudata(L, new QList<QVariant>(self->toList()), "QList<QVariant>*"); return 1;
@@ -498,6 +497,7 @@ int lqtL_qvariant_value(lua_State *L) {
 		case QVariant::Font: lqtL_passudata(L, new QFont(self->value<QFont>()), "QFont*"); return 1;
 		case QVariant::Icon: lqtL_passudata(L, new QIcon(self->value<QIcon>()), "QIcon*"); return 1;
 		case QVariant::Image: lqtL_passudata(L, new QImage(self->value<QImage>()), "QImage*"); return 1;
+		case QVariant::KeySequence: lqtL_passudata(L, new QKeySequence(self->value<QKeySequence>()), "QKeySequence*"); return 1;
 		case QVariant::Matrix: lqtL_passudata(L, new QMatrix(self->value<QMatrix>()), "QMatrix*"); return 1;
 		case QVariant::Matrix4x4: lqtL_passudata(L, new QMatrix4x4(self->value<QMatrix4x4>()), "QMatrix4x4*"); return 1;
 		case QVariant::Palette: lqtL_passudata(L, new QPalette(self->value<QPalette>()), "QPalette*"); return 1;

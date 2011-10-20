@@ -5,17 +5,17 @@ module('virtuals', package.seeall)
 function fill_virtuals(classes)
 	local byname = {}
 	for c in pairs(classes) do
-		byname[c.xarg.fullname] = c
+		byname[c.fullname] = c
 	end
 	local function get_virtuals(c, includePrivate)
 		local ret = {}
 		for _, f in ipairs(c) do
-			if f.label=='Function' and f.xarg.virtual=='1' then
-				local n = string.match(f.xarg.name, '~') or f.xarg.name
+			if f.type=='Function' and f.virtual then
+				local n = string.match(f.name, '~') or f.name
 				if n~='~' and n~='metaObject' then ret[n] = f end
 			end
 		end
-		for b in string.gmatch(c.xarg.bases or '', '([^;]+);') do
+		for _, b in ipairs(c.bases or {}) do
 			local base = byname[b]
 			if type(base)=='table' then
 				local bv = get_virtuals(base, true)
@@ -25,11 +25,11 @@ function fill_virtuals(classes)
 			end
 		end
 		for _, f in ipairs(c) do
-			if f.label=='Function'
-				and (includePrivate or f.xarg.access~='private')
-				and (ret[string.match(f.xarg.name, '~') or f.xarg.name]) then
-				f.xarg.virtual = '1'
-				local n = string.match(f.xarg.name, '~')or f.xarg.name
+			if f.type=='Function'
+				and (includePrivate or f.access~='private')
+				and (ret[string.match(f.name, '~') or f.name]) then
+				f.virtual = true
+				local n = string.match(f.name, '~')or f.name
 				ret[n] = f
 			end
 		end
@@ -50,7 +50,7 @@ function virtual_overload(v)
 	if v.virtual_overload then return v end
 	-- make return type
 	if v.return_type and not typesystem[v.return_type] then
-		ignore(v.xarg.fullname, 'unknown return type', v.return_type)
+		ignore(v.fullname, 'unknown return type', v.return_type)
 		return nil, 'return: '..v.return_type
 	end
 	local rget, rn, ret_as = '', 0
@@ -69,28 +69,28 @@ function virtual_overload(v)
 	-- make argument push
 	local pushlines, stack = make_pushlines(v.arguments)
 	if not pushlines then
-		ignore(v.xarg.fullname, 'unknown argument type', stack)
+		ignore(v.fullname, 'unknown argument type', stack)
 		return nil, 'argument: '..stack
 	end
 	-- make lua call
 	local luacall = 'lqtL_pcall(L, '..(stack+1)..', '..rn..', 0)'
 	-- make prototype and fallback
-	local proto = (v.return_type or 'void')..' ;;'..v.xarg.name..' ('
+	local proto = (v.return_type or 'void')..' ;;'..v.name..' ('
 	local fallback = ''
 	for i, a in ipairs(v.arguments) do
 		proto = proto .. (i>1 and ', ' or '')
-		.. argument_name(a.xarg.type_name, 'arg'..i)
+		.. argument_name(a.type_name, 'arg'..i)
 		fallback = fallback .. (i>1 and ', arg' or 'arg') .. i
 	end
-	proto = proto .. ')' .. (v.xarg.constant=='1' and ' const' or '')
-	fallback = (v.return_type and 'return this->' or 'this->') .. v.xarg.fullname .. '(' .. fallback .. ');'
-	if v.xarg.abstract then
-		fallback = 'luaL_error(L, "Abstract method %s not implemented! In %s", "' .. v.xarg.name .. '", lqtL_source(L,oldtop+1));'
+	proto = proto .. ')' .. (v.constant and ' const' or '')
+	fallback = (v.return_type and 'return this->' or 'this->') .. v.fullname .. '(' .. fallback .. ');'
+	if v.abstract then
+		fallback = 'luaL_error(L, "Abstract method %s not implemented! In %s", "' .. v.name .. '", lqtL_source(L,oldtop+1));'
 	end
 	ret = proto .. [[ {
   int oldtop = lua_gettop(L);
-  lqtL_pushudata(L, this, "]]..string.gsub(v.xarg.member_of_class, '::', '.')..[[*");
-  lqtL_getoverload(L, -1, "]]..v.xarg.name..[[");
+  lqtL_pushudata(L, this, "]]..string.gsub(v.member_of_class, '::', '.')..[[*");
+  lqtL_getoverload(L, -1, "]]..v.name..[[");
   lua_pushvalue(L, -1); // copy of function
   if (lua_isfunction(L, -1)) {
     lua_insert(L, -3);
@@ -122,9 +122,9 @@ function fill_virtual_overloads(classes)
 	for c in pairs(classes) do
 		if c.virtuals then
 			for i, v in pairs(c.virtuals) do
-				if v.xarg.access~='private' then
+				if v.access~='private' then
 					local vret, err = virtual_overload(v)
-					if not vret and v.xarg.abstract then
+					if not vret and v.abstract then
 						-- cannot create instance without implementation of an abstract method
 						c.abstract = true
 					end
@@ -137,18 +137,18 @@ end
 
 
 function fill_shell_class(c)
-	local shellname = 'lqt_shell_'..c.xarg.cname
-	local shell = 'class LQT_EXPORT ' .. shellname .. ' : public ' .. c.xarg.fullname .. ' {\npublic:\n'
+	local shellname = 'lqt_shell_'..c.cname
+	local shell = 'class LQT_EXPORT ' .. shellname .. ' : public ' .. c.fullname .. ' {\npublic:\n'
 	shell = shell .. '  lua_State *L;\n'
 	for _, constr in ipairs(c.constructors) do
-		if constr.xarg.access~='private' then
+		if constr.access~='private' then
 			local cline = '  '..shellname..' (lua_State *l'
 			local argline = ''
 			for i, a in ipairs(constr.arguments) do
-				cline = cline .. ', ' .. argument_name(a.xarg.type_name, 'arg'..i)
+				cline = cline .. ', ' .. argument_name(a.type_name, 'arg'..i)
 				argline = argline .. (i>1 and ', arg' or 'arg') .. i
 			end
-			cline = cline .. ') : ' .. c.xarg.fullname
+			cline = cline .. ') : ' .. c.fullname
 				.. '(' .. argline .. '), L(l) '
 				.. '{\n    lqtL_register(L, this);\n'
 			if c.protected_enums then
@@ -159,12 +159,12 @@ function fill_shell_class(c)
 		end
 	end
 	if c.copy_constructor==nil and c.public_constr then
-		local cline = '  '..shellname..' (lua_State *l, '..c.xarg.fullname..' const& arg1)'
-		cline = cline .. ' : ' .. c.xarg.fullname .. '(arg1), L(l) {}\n'
+		local cline = '  '..shellname..' (lua_State *l, '..c.fullname..' const& arg1)'
+		cline = cline .. ' : ' .. c.fullname .. '(arg1), L(l) {}\n'
 		shell = shell .. cline
 	end
 	for i, v in pairs(c.virtuals) do
-		if v.xarg.access~='private' then
+		if v.access~='private' then
 			if v.virtual_proto then shell = shell .. '  virtual ' .. v.virtual_proto .. ';\n' end
 		end
 	end
@@ -180,7 +180,7 @@ function fill_shell_class(c)
 		shell = shell .. '  void registerEnums() {\n'
 		for _,e in ipairs(c.protected_enums) do
 			shell = shell .. e.enum_table
-			shell = shell .. '    lqtL_createenum(L, lqt_enum'..e.xarg.id..', "'..string.gsub(e.xarg.fullname, "::", ".")..'");\n'
+			shell = shell .. '    lqtL_createenum(L, lqt_enum_'..e.id..', "'..string.gsub(e.fullname, "::", ".")..'");\n'
 		end
 		shell = shell .. '  }\n'
 	end
@@ -196,7 +196,7 @@ function fill_shell_classes(classes)
 			local nc = fill_shell_class(c)
 			if not nc then
 				 -- FIXME: useless, but may change
-				ignore(c.xarg.fullname, 'failed to generate shell class')
+				ignore(c.fullname, 'failed to generate shell class')
 				classes[c] = nil
 			end
 		end
@@ -207,7 +207,7 @@ end
 
 function print_shell_classes(classes)
 	for c in pairs(classes) do
-		local n = c.xarg.cname
+		local n = c.cname
 		local fhead = assert(io.open(module_name.._src..module_name..'_head_'..n..'.hpp', 'w'))
 		local print_head = function(...)
 			fhead:write(...)
@@ -216,7 +216,7 @@ function print_shell_classes(classes)
 		print_head('#ifndef LQT_HEAD_'..n)
 		print_head('#define LQT_HEAD_'..n)
 		print_head(output_includes)
-		--print_head('#include <'..string.match(c.xarg.fullname, '^[^:]+')..'>')
+		--print_head('#include <'..string.match(c.fullname, '^[^:]+')..'>')
 		print_head''
 		if c.shell then
 			print_head('#include "'..module_name..'_slot.hpp'..'"\n\n')
@@ -238,7 +238,7 @@ function print_virtual_overloads(classes)
 	for c in pairs(classes) do
 		if c.shell then
 			local vo = ''
-			local shellname = 'lqt_shell_'..c.xarg.cname
+			local shellname = 'lqt_shell_'..c.cname
 			for _,v in pairs(c.virtuals) do
 				if v.virtual_overload then
 					vo = vo .. string.gsub(v.virtual_overload, ';;', shellname..'::', 1)
