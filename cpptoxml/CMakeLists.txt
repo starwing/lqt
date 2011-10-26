@@ -57,11 +57,11 @@ set(parser_src parser/ast.cpp
                parser/rpp/preprocessor.cpp)
 
 
-add_executable(cpptoxml main.cpp ${parser_src} )
+#add_executable(cpptoxml main.cpp ${parser_src} )
 add_executable(cpptolua main_luatable.cpp ${parser_src} )
-add_executable(cpptojson main_json.cpp ${parser_src} )
+#add_executable(cpptojson main_json.cpp ${parser_src} )
 
-foreach (p cpptoxml cpptolua cpptojson)
+foreach (p cpptolua)#cpptoxml cpptojson)
     target_link_libraries(${p} ${QT_LIBRARIES} ${QT_QTMAIN_LIBRARY})
     set_target_properties(${p} PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
     install(TARGETS ${p} DESTINATION bin)
